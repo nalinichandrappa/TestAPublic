@@ -1,0 +1,6 @@
+@TestAIPublic_HostAddress = http://localhost:5225
+
+GET {{TestAIPublic_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
