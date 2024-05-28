@@ -1,0 +1,2324 @@
+Method RunValidationSQL()=
+Declare
+	i 		   		= Integer Not Null With Default;
+Enddeclare
+Begin
+
+	
+
+    i = 1;
+    
+    Select  vs.val_id     As :CurObject.validation_sql_ar[i].val_id,
+            vs.select_sql As :CurObject.validation_sql_ar[i].select_sql,
+            vs.from_sql   As :CurObject.validation_sql_ar[i].from_sql,
+            vs.where_sql  As :CurObject.validation_sql_ar[i].where_sql
+    From    application_group ag, 
+	        validation_rule vr,
+	        validation_sql vs
+    Where   ag.app_group_id = :CurObject.app_group_id
+    And     ag.val_id = vr.val_id
+	And    vr.val_id = vs.val_id
+    Begin
+
+        :CurObject.validation_sql_ar[i].validation_sql = STRINGOBJECT.Create();
+        :CurObject.validation_sql_ar[i].validation_sql.value =  
+           'insert into validation_error ' +
+           '( ' +
+           'v_reg_no, ' +
+           'val_id, ' +
+           'created_by, ' +
+           'created_dt ' +
+            ') ' +
+            :CurObject.validation_sql_ar[i].select_sql + ', ' +
+            varchar(:CurObject.validation_sql_ar[i].val_id) + ', ' +
+            'dbmsinfo(' + HC_QUOTE + 'user_id' + HC_QUOTE + '), ' +
+            HC_QUOTE + 'now' + HC_QUOTE + ' ' +
+            :CurObject.validation_sql_ar[i].from_sql + ' ' +
+            :CurObject.validation_sql_ar[i].where_sql; 
+
+        i = i + 1;
+	End;
+
+    
+
+    TxMgr.Begin_Transaction();
+    
+    For i = 1 To CurObject.validation_sql_ar.LastRow Do
+
+        Execute Immediate :CurObject.validation_sql_ar[i].validation_sql.Value;
+  
+		If iierrornumber != ER_OK Then
+			GLOB_ERR = iierrornumber;
+			Txmgr.roll_back();
+			CurMethod.Trace(Text = VarChar(Date('now')) + 
+					' - ERROR: Validation SQL failed ');
+			Callproc IAErrHandler_pr();
+			Return False;
+		EndIf;  
+		
+    EndFor;
+
+    TxMgr.End_Transaction();    
+    
+    Return True;
+
+End;
+
+
+Method RunStandardSQL()=
+Declare
+	i 		   		= Integer Not Null With Default;
+Enddeclare
+Begin
+
+	
+
+    i = 1;
+    
+    Select  vs.val_id     As :CurObject.validation_sql_ar[i].val_id,
+            vs.full_sql   As :CurObject.validation_sql_ar[i].full_sql.value
+    From    application_group ag, 
+	        validation_rule vr,
+	        validation_sql vs
+    Where   ag.app_group_id = :CurObject.app_group_id
+    And     ag.val_id = vr.val_id
+	And     vr.val_id = vs.val_id
+	And     vr.IsStandard = :TRUE
+    Begin
+        i = i + 1;
+	End;
+
+    
+
+    TxMgr.Begin_Transaction();
+    
+    For i = 1 To CurObject.validation_sql_ar.LastRow Do
+
+        Execute Immediate :CurObject.validation_sql_ar[i].full_sql.Value;
+  
+		If iierrornumber != ER_OK Then
+			GLOB_ERR = iierrornumber;
+			Txmgr.roll_back();
+			CurMethod.Trace(Text = VarChar(Date('now')) + 
+					' - ERROR: Validation SQL failed for Standard for validation rule' + 
+                        varchar(:CurObject.validation_sql_ar[i].val_id));
+			Callproc IAErrHandler_pr();
+			Return False;
+		EndIf;  
+		
+    EndFor;
+
+    TxMgr.End_Transaction();    
+    
+    Return True;
+
+End;
+
+
+
+
+
+]]>
+<![CDATA[
+
+
+
+
+#include system_constants_h
+#include error_values_h
+#Define $SIMI_ZEROES '00000000'
+
+Procedure omt_vehicle_update_extract =
+Declare
+    v_where     = VarChar(20);
+    v_cur_date  = Date;
+    v_update_type_1 = VarChar(1);
+    v_update_type_2 = VarChar(1);
+    nvdfparameter_ref = nvdfparameter_uc;
+    private_co2_tcs_code = Char(3);
+EndDeclare
+Begin
+    If SP_RUN_LOCATION <> '$SERVER' And SP_RUN_LOCATION <> '$CLIENT' Then
+        CurProcedure.Trace(Text = '');
+        CurProcedure.Trace(Text = 'The system parameter for ' +
+            'the run location has not been correctly set to either S (server) ' +
+            'or C (client)');
+        TxMgr.Roll_Back();
+        Return False;
+    EndIf;
+
+    If SP_RUN_LOCATION = '$SERVER' Then
+        CurProcedure.DbSession = Callproc OMTConnectBatch();
+        If CurProcedure.DbSession Is Null Then
+            CurProcedure.Trace(Text = '');
+            CurProcedure.Trace(Text = 'Unable to connect to database ' +
+                'for procedure OMTE03 at ' + VarChar(Date('Now')));
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+    ElseIf SP_RUN_LOCATION = '$CLIENT' Then
+        CurProcedure.DbSession=
+            TxMgr.GetConnection(connection_type=$LOCAL_CONNECTION);
+        If CurProcedure.DbSession Is Null Then
+            CurProcedure.Trace(Text = 'Unable to Connect to Database');
+            TopFrame.Terminate();
+        EndIf;
+        ConnectTo.data_connections[$LOCAL_CONNECTION].accessed_flg = True;
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        'Connected to ' + CurProcedure.DbSession.database);
+
+    CurProcedure.Trace(Text = HC_NEWLINE +
+        'Procedure omt_vehicle_update_extract started at '+ VarChar(Date('Now')));
+
+    
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+      ' Start Procedure omt_vehicle_update_extract');
+
+    
+
+    CurProcedure.DbSession=
+        TxMgr.GetConnection(connection_type=$LOCAL_CONNECTION);
+    If CurProcedure.DbSession Is Null Then
+        CurProcedure.Trace(Text = 'Unable to Connect to Database');
+        TopFrame.Terminate();
+    EndIf;
+
+    ConnectTo.data_connections[$LOCAL_CONNECTION].accessed_flg = True;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        'Connected to ' + CurProcedure.DbSession.database);
+
+    
+    
+    
+    
+    
+
+    Set LOCKMODE On vehicle_table           Where READLOCK = NOLOCK;
+    Set LOCKMODE On vehicle_owner_table     Where READLOCK = NOLOCK;
+    Set LOCKMODE On veh_tax_assessment      Where READLOCK = NOLOCK;
+    Set LOCKMODE On assessment_class        Where READLOCK = NOLOCK;
+    Set LOCKMODE On tax_class_body_type     Where READLOCK = NOLOCK;
+    Set LOCKMODE On omt_authentication      Where READLOCK = NOLOCK;
+    Set LOCKMODE On vehicle_weight          Where READLOCK = NOLOCK;
+    Set LOCKMODE On previous_regs           Where READLOCK = NOLOCK;
+    Set LOCKMODE On cert_of_rdworthiness    Where READLOCK = NOLOCK;
+    Set LOCKMODE On engine                  Where READLOCK = NOLOCK;
+    Set LOCKMODE On revenue_exempt_vehicles Where READLOCK = NOLOCK;
+    Set LOCKMODE On alert_forms             Where READLOCK = NOLOCK;
+    Set LOCKMODE On vehicle_lic_cert        Where READLOCK = NOLOCK;
+    Set LOCKMODE On cert_of_destruction     Where READLOCK = NOLOCK;
+    Set LOCKMODE On omt_interface_run       Where READLOCK = NOLOCK;
+    Set LOCKMODE On veh_tech_attribute      Where READLOCK = NOLOCK;
+
+    
+
+    TxMgr.Begin_Transaction();
+    
+    retval = :nvdfparameter_ref.popdb(p_np_name = '$PRIVATE_CO2_TAX_CODE');
+
+    If retval = False Then
+       TxMgr.Roll_Back();
+       CurProcedure.trace(Text = VarChar(Date('NOW'))
+       + ' - ERROR: Selecting parameter details for PRIVATE_CO2_TAX_CODE ');
+       Return False;
+    Else
+       private_co2_tcs_code =  :nvdfparameter_ref.np_string_value;
+    EndIf;
+
+    TxMgr.End_Transaction();  
+
+    TxMgr.Begin_Transaction();
+
+    
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Deleting non-existent vehicles from omt_vehicle_updates...');
+
+    Delete From omt_vehicle_updates
+    Where v_reg_no Not In
+                (
+                 Select v_reg_no
+                 From vehicle_table
+                );
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting non-existent vehicles from'
+            + ' omt_vehicle_updates failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicles deleted from omt_vehicle_updates');
+
+    TxMgr.End_Transaction();
+
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Deleting vehicles in omt_vehicle_update_extract where duplicate pending updates exist- Step 1...');
+
+                 Delete From omt_vehicle_update_extract ove
+         Where  ove.new_row != 'Y'
+         And
+            (ove.oir_id Is Null Or ove.oir_id = 0
+             Or ove.oir_id In
+                (
+                     Select oir_id
+                         From   omt_interface_run
+                         Where  oij_status = '$OIR_INITIATED'
+                                 And    oir_source_system = '$DB_NVDF'
+                    )
+            )
+                 And ove.v_reg_no In
+                        (
+                         Select ovei.v_reg_no
+                         From omt_vehicle_update_extract ovei
+                 Where  ovei.new_row = 'Y'
+                 And ovei.od_no Is Null
+                         )
+         And ove.od_no Is Null;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting vehicles in omt_vehicle_update_extract'
+            + '  where duplicate pending update exist failed - Step 1');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicles updated for duplicate pending updates - Step 1');
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Deleting vehicles in omt_vehicle_update_extract where duplicate pending updates exist- Step 2...');
+
+                 Delete From omt_vehicle_update_extract ove
+         Where  ove.oir_id In
+                (
+                     Select oir_id
+                         From   omt_interface_run
+                         Where  oij_status = '$OIR_INITIATED'
+                                 And    oir_source_system = '$DB_NVDF'
+                    )
+                 And ove.v_reg_no In
+                        (
+                         Select ovei.v_reg_no
+                         From omt_vehicle_update_extract ovei
+                 Where  ovei.oir_id Is Null Or ovei.oir_id = 0
+                 And ovei.od_no Is Null
+                         )
+         And ove.od_no Is Null;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting vehicles in omt_vehicle_update_extract'
+            + '  where duplicate pending update exist failed - Step 2');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicles updated for duplicate pending updates - Step 2');
+
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating vehicles in omt_vehicle_update_extract where pending update exists... (Step 1)');
+
+                 Update omt_vehicle_update_extract ove
+                 From   omt_interface_run oir
+         Set    new_row = 'Y'
+         Where
+            (   ove.oir_id = oir.oir_id
+                     And    oir.oij_status = '$OIR_INITIATED'
+                     And    oir.oir_source_system = '$DB_NVDF')
+                 And    (new_row Is Null Or new_row = '')
+         And    ove.od_no Is Null;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicles in omt_vehicle_update_extract'
+            + '  where pending update exists failed (Step 1)');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicles updated for pending updates (Step 1)');
+
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating vehicles in omt_vehicle_update_extract where pending update exists... (Step 2)');
+
+                 Update omt_vehicle_update_extract ove
+         Set    new_row = 'Y'
+         Where  (oir_id Is Null Or oir_id = 0)
+                 And    (new_row Is Null Or new_row = '')
+         And    ove.od_no Is Null;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicles in omt_vehicle_update_extract'
+            + '  where pending update exists failed (Step 2)');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicles updated for pending updates (Step 2)');
+
+    TxMgr.End_Transaction();
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Deleting vehicles from omt_vehicle_updates where pending update exists...');
+
+    TxMgr.Begin_Transaction();
+
+    Delete From omt_vehicle_updates ovu
+    Where ovu.v_reg_no In
+                (
+                 Select ove.v_reg_no
+                 From omt_vehicle_update_extract ove
+         Where  ove.new_row = 'Y'
+         And ove.od_no Is Null
+                );
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting vehicles with pending updates from'
+            + ' omt_vehicle_updates failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicles deleted from omt_vehicle_updates for pending updates');
+
+    TxMgr.End_Transaction();
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Deleting from omt_vehicle_update_extract_alert where new update is to be generated...');
+
+    TxMgr.Begin_Transaction();
+
+    Delete From omt_vehicle_update_extract_alert ovea
+    Where ovea.v_reg_no In
+                (
+                 Select ove.v_reg_no
+                 From omt_vehicle_update_extract ove
+         Where  ove.new_row = 'Y'
+                 )
+    And   IfNull(ovea.oir_id, -1) Not In
+        (
+             Select oir_id
+                 From   omt_interface_run
+                 Where  oij_status = '$OIR_EX_SUCCESS'
+                 And    oir_source_system = '$DB_NVDF'
+            );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting alerts where new update is to be generated from'
+            + ' omt_vehicle_update_extract_alert failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' alerts deleted from omt_vehicle_update_extract_alert'
+        + ' where new update is to be generated');
+    TxMgr.End_Transaction();
+
+    
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Deleting from omt_vehicle_update_extract_vtattr where new update is to be generated...');
+
+    TxMgr.Begin_Transaction();
+
+    Delete From omt_vehicle_update_extract_vtattr oveta
+    Where oveta.v_reg_no In
+                (
+                 Select ove.v_reg_no
+                 From omt_vehicle_update_extract ove
+         Where  ove.new_row = 'Y'
+                 )
+    And   IfNull(oveta.oir_id, -1) Not In
+        (
+             Select oir_id
+                 From   omt_interface_run
+                 Where  oij_status = '$OIR_EX_SUCCESS'
+                 And    oir_source_system = '$DB_NVDF'
+            );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting vehicle technical attributes where new update is to be generated from'
+            + ' omt_vehicle_update_extract_vtattr failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicle technical attributes deleted from omt_vehicle_update_extract_vtattr'
+        + ' where new update is to be generated');
+    TxMgr.End_Transaction();
+
+    
+
+    If      :V_DTLS_TYPE= 'D' Then
+            v_update_type_1 = 'D';
+        v_update_type_2 = 'D';
+    ElseIf  :V_DTLS_TYPE= 'R' Then
+            v_update_type_1 = 'R';
+        v_update_type_2 = 'R';
+    ElseIf  :V_DTLS_TYPE= 'A' Then
+            v_update_type_1 = 'R';
+        v_update_type_2 = 'D';
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Inserting detail updates from updates table...');
+
+    
+    
+
+    TxMgr.Begin_Transaction();
+
+    Insert Into omt_vehicle_update_extract
+        (
+         v_reg_no,
+         ovu_type,
+         new_row
+        )
+    Select Distinct (v_reg_no),
+                    'D',
+                    'Y'
+    From    omt_vehicle_updates
+    Where   ovu_type In (:v_update_type_1, :v_update_type_2);
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Inserting details updates failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' details updates inserted to omt_vehicle_update_extract table.');
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with vehicle details...');
+
+    TxMgr.End_Transaction();
+
+    
+    
+    TxMgr.Begin_Transaction();
+    Update  omt_vehicle_update_extract o
+    From    vehicle_table v
+    Set     v_seat_no       = v.v_seat_no,
+            bd_code         = v.bd_code,
+            mk_code         = v.mk_code,
+            md_code         = v.md_code,
+            cl_code         = v.cl_code,
+            v_ncts_tst_dt   = v.v_ncts_tst_dt,
+            mto_code        = v.mto_code,
+            tcs_code        = v.tcs_code,
+            v_tax_expiry    = v.v_tax_expiry,
+            v_sor_expiry    = v.v_sor_expiry, //1.04
+            o_seq_no        = v.o_seq_no,
+            rw_pass_no      = v.rw_pass_no,
+            v_reg_dt        = v.v_reg_dt,
+            v_lic_dt        = v.v_lic_dt,
+            v_manu_yr       = v.v_manu_yr,
+            v_reg_stat      = v.v_reg_stat,
+            v_birth_dt      = v.v_birth_dt,
+            wt_start_dt     = v.wt_start_dt,
+            eg_no           = v.eg_no,
+            otx_code        = v.otx_code,
+            v_chas_no       = v.v_chas_no,
+            sm_code         = IfNull(Squeeze(v.sm_code),'$SIMI_ZEROES'),
+            vx_code         = v.vx_code,
+            lc_no           = v.lc_no,
+            cod_no          = v.cod_no, 
+            use_wltp        = v.use_wltp //1.07
+    Where   v.v_reg_no      = o.v_reg_no
+    And     o.new_row       = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated in the omt_vehicle_update_extract table.');
+
+    TxMgr.End_Transaction();
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with vehicle technical attributes...');
+
+    TxMgr.Begin_Transaction();
+
+    Update  omt_vehicle_update_extract o
+    From    veh_tech_attribute  vab
+    Set     vrt_code        = vab.vrt_code,
+            vab_co2_value   = vab.vab_co2_value
+    Where   vab.v_reg_no    = o.v_reg_no
+    And     o.new_row       = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle technical attributes failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    TxMgr.End_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated in the omt_vehicle_update_extract table.');
+
+    
+
+    
+
+    
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with owner details (general)...');
+    Update  omt_vehicle_update_extract o
+    From    vehicle_owner_table vo
+    Set     o_addr1          = vo.o_addr1,
+            o_addr2          = vo.o_addr2,
+            o_town          = vo.o_town,
+            o_eircode	    = vo.o_eircode, //1.06
+            o_cc_code       = vo.o_cc_code,
+            po_sort_code    = vo.po_sort_code,
+            o_std_ph        = vo.o_std_ph,
+            o_phone         = vo.o_phone,
+            o_email         = vo.o_email,
+            o_coreg_no      = vo.o_coreg_no,
+            o_sale_dt       = vo.o_sale_dt,
+            o_start_not_dt  = vo.o_start_not_dt,
+            o_title         = vo.o_title,
+            o_forename      = vo.o_forename,
+            o_surname       = vo.o_surname,
+            o_suffix        = vo.o_suffix,
+            g_code          = vo.g_code,
+            o_elec_rem_yn   = vo.o_elec_rem_yn,
+            o_mobile_prefix = vo.o_mobile_prefix,
+            o_mobile_no     = vo.o_mobile_no
+    Where   vo.v_reg_no = o.v_reg_no
+    And     vo.o_seq_no = o.o_seq_no
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle owner details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+    VarChar(iirowcount) + ' owner details updated in the omt_vehicle_update_extract table.');
+
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with owner details (company)...');
+
+    
+    Update  omt_vehicle_update_extract o
+    From    vehicle_owner_table vo
+    Set     o_name          = Squeeze(vo.o_comp_name)
+    Where   vo.v_reg_no = o.v_reg_no
+    And     vo.o_seq_no = o.o_seq_no
+    And     vo.oc_code In ('C','S','D')
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle owner details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+    VarChar(iirowcount) + ' owner details updated in the omt_vehicle_update_extract table.');
+
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with owner details (private)...');
+
+    Update  omt_vehicle_update_extract o
+    From    vehicle_owner_table vo
+    Set     o_name =    (Squeeze(vo.o_title + ' '
+                            +   vo.o_forename + ' '
+                            +   vo.o_surname + ' '
+                            +   vo.o_suffix ))
+    Where   vo.v_reg_no     = o.v_reg_no
+    And     vo.o_seq_no     = o.o_seq_no
+    And     vo.oc_code      = 'P'
+    And     o.new_row       = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle owner details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+    VarChar(iirowcount) + ' private owner details updated in the omt_vehicle_update_extract table.');
+    TxMgr.End_Transaction();
+
+    
+
+    
+
+    
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with owner details (garage)...');
+
+    Update  omt_vehicle_update_extract o
+    From    vehicle_owner_table vo
+    Set     o_name = Squeeze(o_namekey)
+    Where   vo.v_reg_no = o.v_reg_no
+    And     vo.o_seq_no = o.o_seq_no
+    And     vo.oc_code In ('G', 'V')
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: garage owner details updated in the omt_vehicle_update_extract table.');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+    VarChar(iirowcount) + ' rows updated');
+    TxMgr.End_Transaction();
+
+    
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with tax assessment details...');
+
+    Update  omt_vehicle_update_extract o
+    From    veh_tax_assessment vta
+    Set     ac_code = vta.ac_code,
+            vta_value = vta.vta_value
+    Where   vta.v_reg_no = o.v_reg_no
+    And     vta.vta_curr_flg = 'Y'
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle tax assessment details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicle tax assessment details updated in the omt_vehicle_update_extract table.');
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with ac_crw_flg...');
+
+    Update  omt_vehicle_update_extract o
+    From    assessment_class a
+    Set     ac_crw_flg = a.ac_crw_flg
+    Where   o.ac_code = a.ac_code
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating ac_crw_flg failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' ac_crw_flg updated in the omt_vehicle_update_extract table.');
+    TxMgr.End_Transaction();
+
+    
+    
+    
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with tax class details...');
+
+    Update  omt_vehicle_update_extract o
+    From    tax_class_body_type tcb
+    Set     v_test_regime = tcb.test_regime
+    Where   tcb.tcs_code = o.tcs_code
+    And     tcb.bd_code = o.bd_code
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating tax class details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' tax class details updated in the omt_vehicle_update_extract table.');
+
+    TxMgr.End_Transaction();
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with PIN details...');
+
+    Update  omt_vehicle_update_extract o
+    From    omt_authentication auth
+    Set     a_type = auth.a_type,
+            a_pin = auth.a_pin
+    Where   o.v_reg_no = auth.a_id
+    And     auth.a_type = 'V'
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating PIN details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' PIN details updated in the omt_vehicle_update_extract table.');
+    
+    TxMgr.End_Transaction();
+     
+    
+    
+    
+    TxMgr.Begin_Transaction();
+    
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        'Updating previous reg date for imported vehicles...');
+    
+            Update  omt_vehicle_update_extract o
+            From    previous_regs pr
+            Set     pr_prev_dt = pr.pr_prev_dt
+            Where   o.v_reg_no = pr.v_reg_no
+            And     o.v_reg_stat = 'I'
+            And     o.new_row = 'Y';
+    
+            If iierrornumber <> 0 Then
+                GLOB_ERR = iierrornumber;
+                TxMgr.Roll_Back();
+                CurProcedure.trace(Text = VarChar(Date('now'))
+                    + ' - ERROR: Updating previous reg details failed');
+                Callproc IAErrHandler_pr();
+                Return False;
+            EndIf;
+    
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' previous reg date updated for imported vehicles');
+        
+    TxMgr.End_Transaction();
+    
+
+    
+
+        
+
+        
+        
+    
+    
+
+    TxMgr.Begin_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating regime for non-NCTS vehicles to NONE...');
+
+    Update  omt_vehicle_update_extract
+    Set     v_test_regime = 'NONE'
+    Where   v_test_regime Not In ('NCTS', 'COMM')
+    And     new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            'ERROR: Setting test regime to NONE failed');
+        GLOB_ERR = iierrornumber;
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' regimes for non-NCTS/COMM vehicles updated in the omt_vehicle_update_extract table.');
+
+    TxMgr.End_Transaction();
+
+
+    
+    
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating extract table with previous reg details...');
+
+        Update  omt_vehicle_update_extract o
+        From    previous_regs pr
+        Set     pr_prev_dt = pr.pr_prev_dt
+        Where   o.v_reg_no = pr.v_reg_no
+        And     o.v_reg_stat != 'N'
+        And     o.v_test_regime = 'COMM'
+        And     o.new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: previous registrations details failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' previous reg details updated in the omt_vehicle_update_extract table.');
+        TxMgr.End_Transaction();
+
+        
+        
+        
+
+        
+
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            'Clearing omt_crw_end table ...');
+
+        Modify omt_crw_end To TRUNCATED;
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: clearing down omt_crw_end table failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) +
+            ' - Inserting into omt_crw_end from crw table...');
+        TxMgr.End_Transaction();
+
+        
+        
+
+        TxMgr.Begin_Transaction();
+        Insert Into omt_crw_end
+        (
+            v_reg_no,
+            rw_end_dt
+        )
+        Select  o.v_reg_no,
+                Max(crw.rw_end_dt)
+        From    cert_of_rdworthiness crw,
+                omt_vehicle_update_extract o
+        Where   o.v_reg_no      = crw.v_reg_no
+        And     o.rw_pass_no    = crw.rw_pass_no
+        And     crw.rwx_code    = 'C'
+        And     o.v_test_regime   = 'COMM'
+        And     Length(o.rw_pass_no) > 0
+        And     o.new_row = 'Y'
+        Group By o.v_reg_no, crw.rw_end_dt;
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: Selection of crw_end_dt into omt_crw_end table failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows inserted to omt_crw_end table');
+
+    TxMgr.End_Transaction();
+
+        
+
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            'Modifying omt_crw_end to hash...');
+
+        Modify  omt_crw_end
+        To      chash
+        On      v_reg_no
+        With    fillfactor = 100;
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: modifying advance_reminders table failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) +
+            ' - Updating rw_end_dt back to extract table...');
+
+        TxMgr.End_Transaction();
+        TxMgr.Begin_Transaction();
+
+        Update  omt_vehicle_update_extract o
+        From    omt_crw_end oce
+        Set     rw_end_dt   = oce.rw_end_dt
+        Where   o.v_reg_no  = oce.v_reg_no
+        And     o.new_row   = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: Update of rw_end_dt from omt_crw_end table failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+        TxMgr.End_Transaction();
+
+        
+
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating birth dates for new vehicles (reg_dt)...');
+
+        Update  omt_vehicle_update_extract
+        Set     v_birth_dt = v_reg_dt
+        Where   (v_birth_dt = '' Or v_birth_dt Is Null)
+        And     v_reg_dt != ''
+        And     v_reg_stat = 'N'
+        And     v_test_regime = 'COMM'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: Updating vehicle birth date failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+        TxMgr.Begin_Transaction();
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating birth dates for new vehicles (lic_dt)...');
+
+        Update  omt_vehicle_update_extract
+        Set     v_birth_dt = Date(Left((VarChar(v_lic_dt)), 7) +
+            + Squeeze(VarChar(v_manu_yr)))
+        Where   (v_birth_dt = '' Or v_birth_dt Is Null)
+        And     v_lic_dt != ''
+        And     v_manu_yr Between 999 And 9999
+        And     v_reg_stat = 'N'
+        And     v_test_regime = 'COMM'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: Updating vehicle birth date failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+        TxMgr.Begin_Transaction();
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating birth dates for non-new vehicles (prev_dt)...');
+
+        Update  omt_vehicle_update_extract
+        Set     v_birth_dt = pr_prev_dt
+        Where   (v_birth_dt = '' Or v_birth_dt Is Null)
+        And     pr_prev_dt != ''
+        And     v_reg_stat != 'N'
+        And     v_test_regime = 'COMM'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: Updating vehicle birth date failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+        TxMgr.Begin_Transaction();
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating birth dates for non-new vehicles (reg_dt)...');
+
+        Update  omt_vehicle_update_extract
+        Set     v_birth_dt = Date(Left((VarChar(v_reg_dt)), 7) +
+            + Squeeze(VarChar(v_manu_yr)))
+        Where   (v_birth_dt = '' Or v_birth_dt Is Null)
+        And     v_reg_dt != ''
+        And     v_manu_yr Between 999 And 9999
+        And     v_reg_stat != 'N'
+        And     v_test_regime = 'COMM'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: Updating vehicle birth date failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+        TxMgr.Begin_Transaction();
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating birth dates for non-new vehicles (lic_dt)...');
+
+        Update  omt_vehicle_update_extract
+        Set     v_birth_dt = Date(Left((VarChar(v_lic_dt)), 7) +
+            + Squeeze(VarChar(v_manu_yr)))
+        Where   (v_birth_dt = '' Or v_birth_dt Is Null)
+        And     v_lic_dt != ''
+        And     v_manu_yr Between 999 And 9999
+        And     v_reg_stat != 'N'
+        And     v_test_regime = 'COMM'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: Updating vehicle birth date failed');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+        TxMgr.End_Transaction();
+
+        
+        
+// STEP 0 - SPECIAL CRW EXEMPTION FOR PRE-1980 MOTOR CARAVANS        
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            'Removing CRW requirements for Motor Caravans regd prior to 1980...');
+
+        Update  omt_vehicle_update_extract
+        Set     v_test_regime = 'NONE',
+                crw_due_dt = ''
+        Where   v_birth_dt < '01-JAN-1980'
+        And     v_birth_dt != ''
+        And     v_test_regime = 'COMM'
+        And     bd_code = '49'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: Removing CRW requirements for Motor Caravans regd prior to 1980.');
+            GLOB_ERR = iierrornumber;
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+//STEP 1 - ALL COMMERCIALS
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating w/ default 1yr CRW due date...');
+
+        Update  omt_vehicle_update_extract
+        Set     crw_due_dt = v_birth_dt + '1 year'
+        Where   v_test_regime = 'COMM'
+        And     v_birth_dt != ''
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: update of default 1yr CRW due date failed.');
+            GLOB_ERR = iierrornumber;
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+//STEP 2 - SPECIAL 4 YEAR RULE FOR MOTOR CARAVANS
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating w/ default 4yr CRW due date for MotorCaravans...');
+
+        Update  omt_vehicle_update_extract
+        Set     crw_due_dt = v_birth_dt + '4 years'
+        Where   v_test_regime = 'COMM'
+        And     v_birth_dt != ''
+        And     bd_code = '49'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+                'ERROR: update of default 4yr CRW due date for MC failed.');
+            GLOB_ERR = iierrornumber;
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+
+        TxMgr.End_Transaction();
+        
+        
+        
+
+        TxMgr.Begin_Transaction();
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating CRW due date based on latest CRW...');
+
+        Update  omt_vehicle_update_extract
+        Set     crw_due_dt = rw_end_dt + '1 day'
+        Where   ((rw_end_dt + '1 day'  > crw_due_dt) Or crw_due_dt Is Null)
+        And     rw_end_dt != ''
+        And     v_test_regime = 'COMM'
+        And     new_row = 'Y';
+
+        If iierrornumber <> 0 Then
+            GLOB_ERR = iierrornumber;
+            TxMgr.Roll_Back();
+            CurProcedure.trace(Text = VarChar(Date('now'))
+                + ' - ERROR: Updating crw_due_dt failed - rule 3');
+            Callproc IAErrHandler_pr();
+            Return False;
+        EndIf;
+
+        CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            VarChar(iirowcount) + ' rows updated');
+        TxMgr.End_Transaction();
+
+
+    
+
+    TxMgr.Begin_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating vehicle_lic_cert info...');
+    Update  omt_vehicle_update_extract o
+    From    vehicle_lic_cert vlc
+    Set     lcx_code    = vlc.lcx_code,
+            lc_stock_no = vlc.lc_stock_no,
+            lc_issue_dt = vlc.lc_issue_dt
+    Where   o.v_reg_no  = vlc.v_reg_no
+    And     o.lc_no     = vlc.lc_no
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle licence details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+    VarChar(iirowcount) + ' VLC details updated in the omt_vehicle_update_extract table.');
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Updating COD info...');
+
+    Update  omt_vehicle_update_extract o
+    From    cert_of_destruction C
+    Set     cdx_code        = C.cdx_code,
+            cod_issue_dt    = C.cod_issue_dt
+    Where   o.v_reg_no      = C.v_reg_no
+    And     o.cod_no        = C.cod_no
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle COD details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+    VarChar(iirowcount) + ' rows updated');
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Inserting Alert info...');
+
+    Insert Into omt_vehicle_update_extract_alert
+        (v_reg_no,
+         at_code,
+         af_occ_dt,
+         af_not_dt,
+         af_rem_dt,
+         new_row
+        )
+    Select  a.v_reg_no,
+            a.at_code,
+            a.af_occ_dt,
+            a.af_not_dt,
+            a.af_rem_dt,
+            'Y'
+    From    alert_forms a, omt_vehicle_update_extract o
+    Where   o.v_reg_no  = a.v_reg_no
+    And     o.new_row = 'Y'
+    And     o.od_no Is Null;
+
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Inserting alert forms information failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - '
+        + VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+
+    
+    
+
+    TxMgr.Begin_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with vehicle weight details...');
+
+    Update  omt_vehicle_update_extract o
+    From    vehicle_weight vw
+    Set     wt_ulw = vw.wt_ulw,
+            wt_gvw = vw.wt_gvw
+    Where   o.v_reg_no = vw.v_reg_no
+    And     o.wt_start_dt = vw.wt_start_dt
+    And     o.new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle weight details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with engine details...');
+
+    Modify engine_update To TRUNCATED;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Truncating engine details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    Insert Into engine_update
+        (v_reg_no,
+         eg_aud_dt
+        )
+    Select      eg.v_reg_no,
+                Max(eg.eg_aud_dt)
+    From        omt_vehicle_update_extract ove,
+                engine eg
+    Where       ove.v_reg_no    =   eg.v_reg_no
+    And         ove.new_row     =   'Y'
+    Group By    eg.v_reg_no;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Inserting engine details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    Update  omt_vehicle_update_extract ove
+    From    engine_update egup,
+            engine eg
+    Set     eg_cc           =   eg.eg_cc,
+            ft_code         =   eg.ft_code
+    Where   ove.v_reg_no    =   egup.v_reg_no
+    And     eg.v_reg_no     =   egup.v_reg_no
+    And     ove.new_row     =   'Y'
+    And     eg.eg_aud_dt    =   egup.eg_aud_dt;
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating engine details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with revenue exemption details...');
+
+
+    Update  omt_vehicle_update_extract o
+    From    revenue_exempt_vehicles rev,
+            revenue_exemption re
+    Set     rev_exempt_flg  = 'Y',
+            rex_to_date     = rev.rex_to_date
+    Where   o.v_reg_no      = rev.v_reg_no
+    And     rev.rex_code    = re.rex_code
+    And     rev.rex_code In ('DS1','DS2','DS3','DIS','DSP')
+    And     re.rex_act_flg  = 'Y'
+    And     o.new_row     =   'Y'
+    And     (rev.rex_to_date >= Date('today')
+    Or      rev.rex_to_date = '');
+
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating revenue exemption details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with revenue exemption flag details...');
+
+
+    Update  omt_vehicle_update_extract o
+    From    revenue_exempt_vehicles rev,
+            revenue_exemption re
+    Set     rev_exempt_flg  = '',
+            rex_to_date     = rev.rex_to_date
+    Where   o.v_reg_no      = rev.v_reg_no
+    And     rev.rex_code    = re.rex_code
+    And     rev.rex_code    Not In ('DS1','DS2','DS3','DIS','DSP')
+    And     re.rex_act_flg  = 'Y'
+    And     o.new_row     =   'Y'
+    And     (rev.rex_to_date >= Date ('today')
+    Or      rev.rex_to_date = '');
+
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating revenue exemption flag details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with revenue exemption end date details...');
+
+
+    Update  omt_vehicle_update_extract o
+    From    revenue_exempt_vehicles rev,
+            revenue_exemption re
+    Set     rev_exempt_flg  = '',
+            rex_to_date     = rev.rex_to_date
+    Where   o.v_reg_no      = rev.v_reg_no
+    And     rev.rex_code    = re.rex_code
+    And     o.new_row     =   'Y'
+    And     rev.rex_code    In ('DS1','DS2','DS3','DIS','DSP')
+    And     re.rex_act_flg  =   'Y'
+    And     (rev.rex_to_date <=  Date ('today')
+    And     rev.rex_to_date !=  '');
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating revenue exemption end date details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Updating extract table with revenue exemption end date details (part 2)...');
+
+    Update  omt_vehicle_update_extract o
+    Set     rev_exempt_flg      =   '',
+            rex_to_date         =   ''
+    Where   o.v_reg_no  Not In  (Select rev.v_reg_no
+                                 From revenue_exempt_vehicles rev
+                                )
+    And     o.new_row     =   'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating revenue exemption end date details failed (part 2)');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+
+    
+    TxMgr.Begin_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+            ' Inserting Vehicle Technical Attributes info...');
+
+    Insert Into omt_vehicle_update_extract_vtattr (
+        v_reg_no,
+	vab_eu_code,
+	vrt_code,
+	vab_type_no,
+	vab_type_dir1,
+	vab_type_dir2,
+	vab_axle_count,
+	vab_wheel_base,
+	vab_pw_ratio,
+	vab_standing_no,
+	vab_co2_value,
+	ren_code,
+	v_chas_no_prev,
+	vab_vrt_rate,
+	vab_special_interest,
+	vab_prev_status,
+	vab_vehicle_desc,
+	vab_eu_bodywork_code,
+	trc_code,
+	tpa_code,
+	tta_no,
+	trt_code,
+	tre_flg,
+	vab_conversion_dt,
+	vab_conversion_recorded_dt,
+	vab_conversion_comment,
+        new_row
+        )
+    Select  
+	vta.v_reg_no,
+	vta.vab_eu_code,
+	vta.vrt_code,
+	vta.vab_type_no,
+	vta.vab_type_dir1,
+	vta.vab_type_dir2,
+	vta.vab_axle_count,
+	vta.vab_wheel_base,
+	vta.vab_pw_ratio,
+	vta.vab_standing_no,
+	vta.vab_co2_value,
+	vta.ren_code,
+	vta.v_chas_no_prev,
+	vta.vab_vrt_rate,
+	vta.vab_special_interest,
+	vta.vab_prev_status,
+	vta.vab_vehicle_desc,
+	vta.vab_eu_bodywork_code,
+	vta.trc_code,
+	vta.tpa_code,
+	vta.tta_no,
+	vta.trt_code,
+	vta.tre_flg,
+	vta.vab_conversion_dt,
+	vta.vab_conversion_recorded_dt,
+	vta.vab_conversion_comment,
+        'Y'
+    From    veh_tech_attribute vta, omt_vehicle_update_extract o
+    Where   o.v_reg_no  = vta.v_reg_no
+    And     o.new_row = 'Y'
+    And     o.od_no Is Null;
+
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Inserting Vehicle Technical Attribute information failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - '
+        + VarChar(iirowcount) + ' rows updated');
+
+    TxMgr.End_Transaction();
+	
+
+    
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' DATA CLEANSING - add bad records to error table...');
+
+    
+
+    v_cur_date = Date('now');
+
+    
+
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+    
+
+    
+
+
+    TxMgr.Begin_Transaction();
+    Insert Into err_data_cleansing
+        (
+            v_reg_no,
+            o_seq_no,
+            cl_code,
+            v_reg_dt,
+            v_birth_dt,
+            v_seat_no,
+            mk_code,
+            md_code,
+            bd_code,
+            ft_code,
+            eg_cc,
+            mto_code,
+            o_cc_code,
+            o_town,
+            o_addr1,
+            wt_ulw,
+            wt_gvw,
+            a_pin,
+            err_date,
+            err_source,
+            v_chas_no,
+            sm_code,
+            vx_code,
+            cod_no,
+            o_coreg_no,
+            o_sale_dt,
+            o_start_not_dt,
+            o_title,
+            o_forename,
+            o_surname,
+            o_suffix,
+            g_code,
+            lc_no,
+            lcx_code,
+            lc_stock_no,
+            lc_issue_dt,
+            cdx_code,
+            cod_issue_dt
+        )
+    Select  v_reg_no,
+            o_seq_no,
+            cl_code,
+            v_reg_dt,
+            v_birth_dt,
+            IfNull(v_seat_no, 0),
+            mk_code,
+            md_code,
+            bd_code,
+            ft_code,
+            IfNull(eg_cc, 0),
+            IfNull(mto_code, 0),
+            o_cc_code,
+            o_town,
+            o_addr1,
+            IfNull(wt_ulw, 0),
+            IfNull(wt_gvw, 0),
+            a_pin,
+            :v_cur_date,
+            'UPDATE',
+            v_chas_no,
+            sm_code,
+            vx_code,
+            IfNull(cod_no, 0),
+            o_coreg_no,
+            o_sale_dt,
+            o_start_not_dt,
+            o_title,
+            o_forename,
+            o_surname,
+            o_suffix,
+            g_code,
+            lc_no,
+            lcx_code,
+            lc_stock_no,
+            lc_issue_dt,
+            cdx_code,
+            cod_issue_dt
+    From    omt_vehicle_update_extract
+    Where   new_row = 'Y'
+        And     (IfNull(o_seq_no, '')       =   ''
+            Or      (IfNull(o_name, '')         =   '')
+            Or      (IfNull(mk_code, '')        =   '')
+            Or      (IfNull(md_code, '')        =   '')
+            Or      (IfNull(mto_code, '')       =   '')
+            Or      (IfNull(o_cc_code, '')      =   '')
+            Or      (IfNull(o_town, '')         =   '')
+            Or      (IfNull(o_addr1, '')         =   '')
+        Or      (IfNull(vx_code, '')      =   '')
+        Or      (IfNull(v_chas_no, '')      =   '')
+    );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Inserting data cleansing details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+     CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows inserted');
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Delete corresponding rows from extract table...');
+
+    
+    Delete From omt_vehicle_update_extract
+    Where   v_reg_no In
+    (
+        Select  v_reg_no
+        From    err_data_cleansing
+        Where   err_source = 'UPDATE'
+        And     err_date = :v_cur_date
+    );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting data cleansing details failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows deleted');
+
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Delete corresponding rows from extract alert table...');
+
+    
+    Delete From omt_vehicle_update_extract_alert
+    Where   v_reg_no In
+    (
+        Select  v_reg_no
+        From    err_data_cleansing
+        Where   err_source = 'UPDATE'
+        And     err_date = :v_cur_date
+    );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting data cleansing alerts failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows deleted');
+
+    
+    Delete From omt_vehicle_update_extract_vtattr
+    Where   v_reg_no In
+    (
+        Select  v_reg_no
+        From    err_data_cleansing
+        Where   err_source = 'UPDATE'
+        And     err_date = :v_cur_date
+    );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting data - Cleansing vehicle technical attributes failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows deleted');
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Update vehicles which are unsuitable for OMT');
+
+    TxMgr.End_Transaction();
+
+    
+
+
+    
+
+    TxMgr.Begin_Transaction();
+
+    
+
+    Update  omt_vehicle_update_extract
+    Set     otx_code = '$UNSUITABLE_DATA'
+    Where   new_row = 'Y'
+    And     (v_lic_dt = '' Or v_lic_dt Is Null)
+    And     (IfNull(o_seq_no, '')       =   ''
+            Or      (IfNull(o_name, '')         =   '')
+            Or      (IfNull(cl_code, '')        =   '')
+            Or      (IfNull(v_reg_dt, '')       =   '')
+            Or      (IfNull(v_birth_dt, '')     =   '')
+            Or      v_seat_no  Is  Null
+            Or      (IfNull(mk_code, '')        =   '')
+            Or      (IfNull(md_code, '')        =   '')
+            Or      (IfNull(bd_code, '')        =   '')
+            Or      (IfNull(ft_code, '')        =   '')
+            Or      (IfNull(eg_cc, '')          =   '')
+            Or      (IfNull(mto_code, '')       =   '')
+            Or      (IfNull(o_cc_code, '')      =   '')
+            Or      (IfNull(o_town, '')         =   '')
+            Or      (IfNull(o_addr1, '')         =   '')
+            Or      (IfNull(a_pin, '')          =   '')
+        Or      (IfNull(vx_code, '')      =   '')
+        Or      (IfNull(v_chas_no, '')      =   '')
+    );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating first licensing suitability failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    i = iirowcount;
+
+    
+
+    Update  omt_vehicle_update_extract
+    Set     otx_code = '$UNSUITABLE_DATA'
+    Where   new_row = 'Y'
+    And     (v_lic_dt != '' And v_lic_dt Is Not Null) // 1.08 - change Or to And
+    And     (tcs_code = :private_co2_tcs_code)
+    And     (    IfNull(vrt_code, '')      =   ''
+            Or  (IfNull(vab_co2_value, -1) <   0 And ft_code != '3') //1.01 //1.08
+            Or  (IfNull(v_reg_stat, '')    =   '') );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating renewal suitability failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    i = iirowcount;
+
+    
+
+    Update  omt_vehicle_update_extract
+    Set     otx_code = '$UNSUITABLE_DATA'
+    Where   new_row = 'Y'
+    And     (v_lic_dt != '' And v_lic_dt Is Not Null)
+    And     (
+            (Squeeze(o_seq_no) = '' Or o_seq_no Is Null)
+                Or  (otx_code = '' Or otx_code Is Null)
+                Or  (
+                         (v_tax_expiry = '' Or v_tax_expiry Is Null) 
+                     And (v_sor_expiry = '' Or v_sor_expiry Is Null)
+                    ) // 1.04
+                Or  (Squeeze(cl_code) = '' Or cl_code Is Null)
+                Or  (Squeeze(mk_code) = '' Or mk_code Is Null)
+                Or  (Squeeze(md_code) = '' Or md_code Is Null)
+                Or  (Squeeze(tcs_code) = '' Or tcs_code Is Null)
+                Or  (mto_code = '' Or mto_code Is Null)
+                Or  (Squeeze(o_cc_code) = '' Or o_cc_code Is Null)
+                Or  (Squeeze(o_name) = '' Or o_name Is Null)
+                Or  (Squeeze(o_addr1) = '' Or o_addr1 Is Null)
+                Or  (Squeeze(o_town) = '' Or o_town Is Null)
+                Or  (Squeeze(v_test_regime) = '' Or v_test_regime Is Null)
+                Or  (v_test_regime = 'NCTS' And (v_ncts_tst_dt = '' Or v_ncts_tst_dt Is Null))
+                Or  (v_test_regime = 'COMM' And (crw_due_dt = '' Or crw_due_dt Is Null))
+                Or  (Squeeze(ac_code) = '' Or ac_code Is Null)
+                Or  (ac_code Not In (Select ac_code From assessment_class))
+                Or  (Squeeze(a_pin) = '' Or a_pin Is Null)
+            Or  (IfNull(vx_code, '')      =   '')
+            Or  (IfNull(v_chas_no, '')      =   '')
+            );
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Updating vehicle renewal suitability failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    i = i + iirowcount;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(i) + ' rows updated with unsuitable code');
+
+    Update vehicle_table v
+    From   omt_vehicle_update_extract ove
+    Set    otx_code = ove.otx_code
+    Where  v.v_reg_no = ove.v_reg_no
+    And    ove.new_row = 'Y'
+    And    ove.otx_code = '$UNSUITABLE_DATA';
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' vehicle table rows updated');
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' DETAIL UPDATES COMPLETE');
+
+    TxMgr.End_Transaction();
+
+    
+
+    
+
+    
+
+    TxMgr.Begin_Transaction();
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Clearing records from omt_vehicle_updates...');
+
+    Delete From omt_vehicle_updates
+    Where   v_reg_no In
+    (
+        Select  v_reg_no
+        From    omt_vehicle_update_extract
+        Where   new_row = 'Y'
+    );
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Deleting from omt_vehicle_updates failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows deleted');
+
+    
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Resetting new_row flag on omt_vehicle_update_extract to blank...');
+
+    Update  omt_vehicle_update_extract
+    Set     new_row = ''
+    Where   new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Resetting new_row flag on omt_vehicle_update_extract to blanks failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Resetting new_row flag on omt_vehicle_update_extract_alert to blank...');
+
+    Update  omt_vehicle_update_extract_alert
+    Set     new_row = ''
+    Where   new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Resetting new_row flag on omt_vehicle_update_extract_alert to blanks failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Resetting new_row flag on omt_vehicle_update_extract_vtattr to blank...');
+
+    Update  omt_vehicle_update_extract_vtattr
+    Set     new_row = ''
+    Where   new_row = 'Y';
+
+    If iierrornumber <> 0 Then
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        CurProcedure.trace(Text = VarChar(Date('now'))
+            + ' - ERROR: Resetting new_row flag on omt_vehicle_update_extract_vtattr to blanks failed');
+        Callproc IAErrHandler_pr();
+        Return False;
+    EndIf;
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        VarChar(iirowcount) + ' rows updated');
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' Processing Complete - SAVING ALL DETAILS');
+
+    
+
+    TxMgr.End_Transaction();
+
+    CurProcedure.Trace(Text = VarChar(Date('now')) + ' - ' +
+        ' END OF PROCEDURE omt_vehicle_update_extract' + HC_NEWLINE);
+
+End; ]]>
+<![CDATA[
+
+#include system_constants_h 
+
+PROCEDURE OMTConnectBatch()=
+DECLARE
+    flags_txt = varchar(50);
+ENDDECLARE
+BEGIN
+    
+
+    
+    Message ' Image Name : OMT_BATCH.img '; 
+    Message ' Version    : ' + varchar(:version_omt_batch);
+
+    
+    ConnectTo.data_connections[$LOCAL_CONNECTION].connect_policy = 0;    
+    ConnectTo.data_connections[$LOCAL_CONNECTION].DBSession_ref = 
+    DBSessionObject.create();
+    ConnectTo.SetPolicy(
+    dbconnection=ConnectTo.data_connections[$LOCAL_CONNECTION], 
+    policy=local_connectpolicy);
+    ConnectTo.data_connections[$LOCAL_CONNECTION].database_name = :local_vnode;    
+    ConnectTo.data_connections[$LOCAL_CONNECTION].accessed_flg = FALSE;
+
+    
+    ConnectTo.data_connections[$STOCK_CONNECTION].connect_policy = 0;
+    ConnectTo.Data_Connections[$STOCK_CONNECTION].DbSession_ref = 
+    DBSessionObject.create();
+    ConnectTo.SetPolicy(
+    dbconnection=ConnectTo.data_connections[$STOCK_CONNECTION], 
+    policy=stock_connectpolicy);
+    ConnectTo.Data_Connections[$STOCK_CONNECTION].database_name = :stock_vnode;
+    ConnectTo.data_Connections[$STOCK_CONNECTION].accessed_flg = TRUE;
+
+    
+    role_id = 'gorm'; 
+    group_id = 3;
+    password = '8idw1raa2458fpiq';
+
+    
+    flags_txt = '-R' + :role_id + '/' + :password;
+
+    
+    retval = ConnectTo.data_connections[$STOCK_CONNECTION].DBSession_ref.Connect(
+        database =  ConnectTo.Data_Connections[$STOCK_CONNECTION].database_name,
+        flags =  :flags_txt); 
+    IF retval <> ER_OK THEN
+    RETURN NULL;
+    ENDIF;  
+
+    
+    CurProcedure.DBSession = 
+    TxMgr.GetConnection(connection_type = $STOCK_CONNECTION);
+    IF CurProcedure.DBSession IS NULL THEN
+        RETURN NULL;
+    ENDIF; 
+
+    TxMgr.Begin_Transaction();        
+    SELECT user_id = lowercase(dbmsinfo('username'));
+
+    IF iierrornumber <> 0 THEN
+        GLOB_ERR = iierrornumber;
+        TxMgr.Roll_Back();
+        RETURN NULL;
+    ENDIF;
+    TxMgr.End_transaction();
+
+
+
+    
+    RETURN CurProcedure.DBSession;
+
+END;]]>
+<![CDATA[
+#include system_constants_h
+#include error_values_h
+#Define $SIMI_ZEROES '00000000'
+
+Method RunInterface()=
+Declare
+	i 		   		= Integer Not Null With Default;
+	h_ret	   		= Integer Not Null With Default;
+Enddeclare
+Begin
+
+	
+
+	CurMethod.DbSession = Callproc OMTConnectBatch();
+	If CurMethod.DbSession Is Null Then
+		CurMethod.Trace(Text = '');
+		CurMethod.Trace(Text = 'Unable to connect to database ' +
+					'for Update Extract Interface at ' + VarChar(Date('Now')));
+		Callproc IAErrHandler_pr();
+		Return False;
+	EndIf;
+
+    CurMethod.Trace(Text = VarChar(Date('now')) + ' - ' +
+        'Connected to ' + CurMethod.DbSession.database);
+
+    CurMethod.Trace(Text = HC_NEWLINE +
+        'method RunInterface for Update Extract started at '+ VarChar(Date('Now')));
+
+    
+
+    CurMethod.DbSession=
+        TxMgr.GetConnection(connection_type=$LOCAL_CONNECTION);
+        
+    If CurMethod.DbSession Is Null Then
+        CurMethod.Trace(Text = 'Unable to Connect to Database');
+        TopFrame.Terminate();
+    EndIf;
+
+    ConnectTo.data_connections[$LOCAL_CONNECTION].accessed_flg = True;
+
+    CurMethod.Trace(Text = VarChar(Date('now')) + ' - ' +
+        'Connected to ' + CurMethod.DbSession.database);
+
+    
+
+    Set LOCKMODE On vehicle_table           Where READLOCK = NOLOCK;
+    Set LOCKMODE On vehicle_owner_table     Where READLOCK = NOLOCK;
+    Set LOCKMODE On veh_tax_assessment      Where READLOCK = NOLOCK;
+    Set LOCKMODE On assessment_class        Where READLOCK = NOLOCK;
+    Set LOCKMODE On tax_class_body_type     Where READLOCK = NOLOCK;
+    Set LOCKMODE On omt_authentication      Where READLOCK = NOLOCK;
+    Set LOCKMODE On vehicle_weight          Where READLOCK = NOLOCK;
+    Set LOCKMODE On previous_regs           Where READLOCK = NOLOCK;
+    Set LOCKMODE On cert_of_rdworthiness    Where READLOCK = NOLOCK;
+    Set LOCKMODE On engine                  Where READLOCK = NOLOCK;
+    Set LOCKMODE On revenue_exempt_vehicles Where READLOCK = NOLOCK;
+    Set LOCKMODE On alert_forms             Where READLOCK = NOLOCK;
+    Set LOCKMODE On vehicle_lic_cert        Where READLOCK = NOLOCK;
+    Set LOCKMODE On cert_of_destruction     Where READLOCK = NOLOCK;
+    Set LOCKMODE On omt_interface_run       Where READLOCK = NOLOCK;
+    Set LOCKMODE On veh_tech_attribute      Where READLOCK = NOLOCK;
+
+    
+    
+    TxMgr.Begin_Transaction();
+    
+    retval = :CurObject.nvdfparameter_ref.popdb(p_np_name = '$PRIVATE_CO2_TAX_CODE');
+
+    If retval = False Then
+       TxMgr.Roll_Back();
+       CurMethod.trace(Text = VarChar(Date('NOW'))
+       + ' - ERROR: Selecting parameter details for PRIVATE_CO2_TAX_CODE ');
+       Return False;
+    Else
+       :CurObject.private_co2_tcs_code =  :CurObject.nvdfparameter_ref.np_string_value;
+    EndIf;
+
+    TxMgr.End_Transaction();  
+
+    h_ret = :CurObject.RunStandardSQL();
+    
+    If h_ret  = False Then
+        Return False;
+    Endif;
+
+    h_ret = :CurObject.RunValidationSQL();
+    
+    If h_ret  = False Then
+        Return False;
+    Endif;
+
+    TxMgr.End_Transaction();
+    
+End
+]]>
